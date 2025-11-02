@@ -1,0 +1,31 @@
+#btnCopy{
+    width: 100px;
+    margin-left: 85%;
+    /* margin-right: 5%; */
+}
+
+iframe {
+  transition: all 0.3s ease-in-out;
+}
+
+@media (prefers-color-scheme: dark) {
+  .dark-iframe {
+    background: #111;
+    border-color: #333;
+  }
+}
+
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-slideDown {
+  animation: slideDown 0.2s ease-in-out;
+}
