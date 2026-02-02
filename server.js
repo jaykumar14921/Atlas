@@ -6,7 +6,7 @@ import multer from "multer";
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import cacheManager from "./utils/cacheManager.js";
+import cacheManager from "./src/utils/cacheManager.js";
 import AdmZip from 'adm-zip';
 
 const __filename = fileURLToPath(import.meta.url);
