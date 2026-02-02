@@ -1,0 +1,116 @@
+/* -------------------------------------------
+   1. Unselected State (Default Look) 
+   ------------------------------------------- */
+/* Target the standard appearance of the unselected button */
+.btn-group .btn-outline-dark {
+    /* Black Background / White Text */
+    background-color: black; 
+    color: white;            
+    border-color: black;     
+}
+
+/* -------------------------------------------
+   2. Selected State (Checked Look) 
+   ------------------------------------------- */
+/* Target the label when the associated radio button is CHECKED */
+.btn-check:checked + .btn-outline-dark {
+    /* White Background / Black Text */
+    background-color: white; 
+    color: black;            
+    border-color: black;     
+    /* This is critical to override Bootstrap's default active shadow */
+    box-shadow: none;        
+}
+
+/* -------------------------------------------
+   3. Hover/Focus States (For Usability)
+   ------------------------------------------- */
+/* Hover/Focus for the UNSELECTED (Black) button */
+.btn-group .btn-outline-dark:hover,
+.btn-group .btn-outline-dark:focus {
+    /* Keep black background, but lighten it slightly for a hover effect */
+    background-color: #343a40; /* Darker grey */
+    color: white;
+    border-color: #343a40;
+}
+
+/* Hover/Focus for the SELECTED (White) button - optional subtle change */
+.btn-check:checked + .btn-outline-dark:hover {
+    background-color: #f8f9fa; /* Slight off-white hover */
+    color: black;
+    border-color: black;
+}
+
+/* ----------------------------------------------------
+   1. Default/Unselected State (No Hover) 
+   ---------------------------------------------------- */
+/* Sets the default look for the standalone buttons and the unselected radio labels */
+.custom-inverted-btn,
+.btn-group .btn-sm.btn-outline-dark {
+    /* DEFAULT: Black Background / White Text */
+    background-color: black; 
+    color: white;            
+    border-color: black;     
+    padding: 0.2rem 0.5rem; 
+    transition: all 0.2s ease-in-out; /* Smooth transition for hover effect */
+}
+
+/* ----------------------------------------------------
+   2. Hover State (The NEW Requirement)
+   ---------------------------------------------------- */
+/* Apply the white/black look on hover for all buttons (including unselected radio labels) */
+.custom-inverted-btn:hover,
+.btn-group .btn-sm.btn-outline-dark:hover {
+    /* HOVER: White Background / Black Text */
+    background-color: white; 
+    color: black;            
+    border-color: black;
+}
+
+/* ----------------------------------------------------
+   3. Selected State (Checked Radio Button)
+   ---------------------------------------------------- */
+/* This ensures the SELECTED radio button always looks like the HOVER state (White/Black) */
+.btn-check:checked + .btn-sm.btn-outline-dark {
+    /* SELECTED: White Background / Black Text */
+    background-color: white; 
+    color: black;            
+    border-color: black;     
+    box-shadow: none;        
+}
+
+/* To maintain the hover appearance on the SELECTED button, 
+   we specifically target the checked button on hover and ensure it stays white/black. */
+.btn-check:checked + .btn-sm.btn-outline-dark:hover {
+    background-color: #f8f9fa; /* Slight off-white hover for subtle feedback */
+    color: black;
+    border-color: black;
+}
+
+
+#btnZip {
+    background-color: black;       /* Default: black */
+    color: white;                  /* White text/icon */
+    border: 1px solid black;       /* Same border */
+    padding: 0.25rem 0.5rem;       /* Small button padding */
+    border-radius: 0.25rem;        /* Rounded corners */
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+    display: inline-flex;          /* For icon + text alignment */
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;                  /* Small gap between icon & text */
+}
+
+#btnZip:hover {
+    background-color: white;       /* Hover: white background */
+    color: black;                  /* Black text/icon */
+    border-color: black;
+}
+
+#btnZip:active,
+#btnZip:focus {
+    outline: none;                 /* Remove default focus outline */
+    box-shadow: none;              /* No shadow */
+}
+
