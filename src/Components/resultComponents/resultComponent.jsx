@@ -2,13 +2,17 @@ import React, { useState, useRef, useEffect } from "react";
 import Editor from "@monaco-editor/react";
 import { InputComponent } from "../inputComponents/inputComponent";
 import { NavBarComponent } from "../navBarComponents/navBarComponent";
+import { FileExplorerComponent } from "../fileExplorerComponents/fileExplorerComponent";
+import { useCacheManager } from "../../utils/useCacheManager";
+import JSZip from "jszip";
 import "./resultComponent.css";
-
-
 
 export function CodeEditor() {
   const [themeImages, setThemeImages] = useState([]);
-  const [code, setCode] = useState(`<!DOCTYPE html>
+  const { compareVersions, undo, redo } = useCacheManager();
+  const [changesInfo, setChangesInfo] = useState(null);
+  const [showChangesModal, setShowChangesModal] = useState(false);
+  const defaultCode = `<!DOCTYPE html>
 <html>
   <head>
     <title>My app</title>
@@ -17,7 +21,7 @@ export function CodeEditor() {
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
   <body class="flex justify-center items-center h-screen overflow-hidden bg-white font-sans text-center px-6">
-    <div class="w-full">
+    <div class="w-full" style="margin-top: 200px">
       <span class="text-xs rounded-full mb-2 inline-block px-2 py-1 border border-amber-500/15 bg-amber-500/15 text-amber-500">🔥 New version dropped!</span>
       <h1 class="text-4xl lg:text-6xl font-bold font-sans">
         <span class="text-2xl lg:text-4xl text-gray-400 block font-medium">I'm ready to work,</span>
@@ -27,33 +31,83 @@ export function CodeEditor() {
       <img src="https://huggingface.co/deepsite/arrow.svg" class="absolute bottom-8 left-0 w-[100px] transform rotate-[30deg]" />
     <script></script>
   </body>
-</html>
-`);
+</html>`;
 
+  const [code, setCode] = useState(defaultCode);
   const [editorWidth, setEditorWidth] = useState(40);
   const [isDragging, setIsDragging] = useState(false);
   const [copied, setCopied] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [deviceMode, setDeviceMode] = useState("desktop"); // 🔄 NEW: device toggle
+  const [deviceMode, setDeviceMode] = useState("desktop");
+  const [generatedFiles, setGeneratedFiles] = useState([
+    {
+      path: "index.html",
+      content: defaultCode,
+      isDefault: true
+    }
+  ]);
+  const [currentFile, setCurrentFile] = useState({
+    path: "index.html",
+    content: defaultCode
+  });
+  const [showFileExplorer, setShowFileExplorer] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false); // Toggle for full-width preview
   const containerRef = useRef(null);
   const editorRef = useRef(null);
+
+  // Toggle between split view and full-width preview
+  const handleToggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+  };
+
+  // Download as ZIP functionality
+  const handleDownloadZip = async () => {
+    try {
+      const zip = new JSZip();
+
+      // Add all files to the zip
+      generatedFiles.forEach(file => {
+        zip.file(file.path, file.content);
+      });
+
+      // Generate the zip file
+      const content = await zip.generateAsync({ type: "blob" });
+
+      // Create download link
+      const url = URL.createObjectURL(content);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "atlas-project.zip";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      // Clean up
+      URL.revokeObjectURL(url);
+
+      console.log("ZIP file downloaded successfully!");
+    } catch (error) {
+      console.error("Error creating ZIP file:", error);
+      alert("Error downloading project files. Please try again.");
+    }
+  };
 
   const handleEditorMount = (editor) => {
     editorRef.current = editor;
   };
 
   useEffect(() => {
-  const handleResize = () => {
-    requestAnimationFrame(() => editorRef.current?.layout());
-  };
-  window.addEventListener("resize", handleResize);
-  return () => window.removeEventListener("resize", handleResize);
-}, []);
+    const handleResize = () => {
+      requestAnimationFrame(() => editorRef.current?.layout());
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const handleMouseDown = () => setIsDragging(true);
   const handleMouseUp = () => setIsDragging(false);
   const handleMouseMove = (e) => {
-    if (!isDragging || !containerRef.current) return;
+    if (!isDragging || !containerRef.current || isFullscreen) return;
     const containerWidth = containerRef.current.getBoundingClientRect().width;
     const newWidth =
       ((e.clientX - containerRef.current.getBoundingClientRect().left) /
@@ -75,11 +129,79 @@ export function CodeEditor() {
     }
   };
 
-  const handleChange = (value) => setCode(value);
-  const handleRefreshPreview = () => setRefreshKey((prev) => prev + 1);
-  const handleDeviceChange = (mode) => setDeviceMode(mode); // 🆕 update mode
+  const handleChange = (value) => {
+    setCode(value);
+    if (currentFile) {
+      setGeneratedFiles(prev =>
+        prev.map(file =>
+          file.path === currentFile.path
+            ? { ...file, content: value }
+            : file
+        )
+      );
+      setCurrentFile(prev => ({ ...prev, content: value }));
+    }
+  };
 
-  // Generate iframe content
+  const handleRefreshPreview = () => setRefreshKey((prev) => prev + 1);
+  const handleDeviceChange = (mode) => setDeviceMode(mode);
+
+  const handleFileSelect = (filePath, fileContent) => {
+    setCurrentFile({ path: filePath, content: fileContent });
+    setCode(fileContent);
+    setShowFileExplorer(false);
+  };
+
+  const handleFileStructure = (files) => {
+    const filteredFiles = files.filter(file => !file.isDefault);
+    setGeneratedFiles(filteredFiles);
+    if (filteredFiles.length > 0) {
+      handleFileSelect(filteredFiles[0].path, filteredFiles[0].content);
+    }
+  };
+
+  const handleSetCode = (newCode) => {
+    setCode(newCode);
+    setCurrentFile(prev => ({ ...prev, content: newCode }));
+    setGeneratedFiles(prev =>
+      prev.map(file =>
+        file.path === currentFile.path
+          ? { ...file, content: newCode }
+          : file
+      )
+    );
+  };
+
+  const handleClearFiles = () => {
+    setGeneratedFiles([
+      {
+        path: "index.html",
+        content: defaultCode,
+        isDefault: true
+      }
+    ]);
+    setCurrentFile({
+      path: "index.html",
+      content: defaultCode
+    });
+    setCode(defaultCode);
+  };
+
+  useEffect(() => {
+    if (code.includes('FILE_STRUCTURE:')) {
+      try {
+        const fileStructureMatch = code.match(/FILE_STRUCTURE:(\[.*?\])/);
+        if (fileStructureMatch) {
+          const files = JSON.parse(fileStructureMatch[1]);
+          handleFileStructure(files);
+          setCode(code.replace(/FILE_STRUCTURE:\[.*?\]/, '').trim());
+        }
+      } catch (error) {
+        console.error('Error parsing file structure:', error);
+      }
+    }
+  }, [code]);
+
   let codeForPreview = code;
   const isFullHtml =
     code.trim().toLowerCase().startsWith("<!doctype") ||
@@ -114,155 +236,187 @@ export function CodeEditor() {
     `;
   }
 
-  // 🔧 Dynamic preview size
-  const iframeStyle =
-    deviceMode === "mobile"
-      ? {
-          width: "390px",
-          height: "100%",
-          border: "1px solid #ccc",
-          borderRadius: "12px",
-          margin: "0 auto",
-          display: "block",
-          boxShadow: "0 0 10px rgba(0,0,0,0.1)",
-        }
-      : { width: "100%", height: "100%", border: "none" };
-
   return (
     <div className="w-full h-[99vh] flex flex-col">
-      {/* 🧭 NavBar */}
       <NavBarComponent
         onRefresh={handleRefreshPreview}
         onDeviceChange={handleDeviceChange}
+        onDownloadZip={handleDownloadZip}
+        onToggleFullscreen={handleToggleFullscreen}
+        isFullscreen={isFullscreen}
       />
 
-      {/* 🧩 Editor + Preview */}
       <div
         ref={containerRef}
-        className="flex flex-row flex-grow w-full"
+        className="flex flex-row flex-grow w-full relative"
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        {/* Left: Code Editor */}
-        <div
-          className="relative flex flex-col border-r"
-          style={{ width: `${editorWidth}%`, minHeight: 0 }}
-        >
-          <button
-            id="btnCopy"
-            onClick={handleCopy}
-            className="bi bi-link-45deg btn btn-dark btn-sm m-1 ms-auto me-5"
-            style={{ width: "40px" }}
-            title={copied ? "Copied!" : "Copy code"}
-          >
-            {copied ? "✔" : ""}
-          </button>
-
-          <div className="flex-grow overflow-auto min-h-0">
-            <Editor
-              height="100%"
-              width="99%"
-              defaultLanguage="html"
-              theme="vs-dark"
-              value={code}
-              onChange={handleChange}
-              onMount={handleEditorMount}
-              options={{
-                minimap: { enabled: false },
-                fontSize: 16,
-                automaticLayout: true,
-                wordWrap: "on",
-              }}
+        {/* File Explorer Overlay */}
+        {showFileExplorer && !isFullscreen && (
+          <div className="file-explorer-overlay">
+            <FileExplorerComponent
+              files={generatedFiles}
+              onFileSelect={handleFileSelect}
+              onRefresh={handleClearFiles}
+              onClose={() => setShowFileExplorer(false)}
             />
           </div>
+        )}
 
-          <div id="inputComponent">
-            <InputComponent setCode={setCode} setThemeImages={setThemeImages} />
-          </div>
-        </div>
+        {/* Left: Code Editor Section - Hidden in fullscreen mode */}
+        {!isFullscreen && (
+          <>
+            <div
+              className="relative flex flex-col border-r"
+              style={{ width: `${editorWidth}%`, minHeight: 0 }}
+            >
+              {/* Editor Header Bar */}
+              <div className="bg-black editor-header d-flex justify-content-between align-items-center border-bottom">
+                <div className="d-flex align-items-center">
 
-        {/* Divider */}
+                  {currentFile && (
+                    <div className="current-file-info ms-3">
+                      <span className="file-name-badge bg-dark">{currentFile.path}</span>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  className="invert-btn btn btn-sm d-flex align-items-center gap-2 ms-2 me-2"
+                  onClick={() => setShowFileExplorer(!showFileExplorer)}
+                  title="File Explorer"
+                >
+                  <span className="bi bi-folder"></span>
+                  Files
+                </button>
+
+
+              </div>
+
+              {/* Monaco Editor with Floating Copy Button */}
+              <div className="flex-grow overflow-auto min-h-0 relative">
+                {/* Floating Copy Button */}
+                <button
+                  id="btnCopy"
+                  onClick={handleCopy}
+                  className="floating-copy-btn btn btn-dark btn-sm d-flex align-items-center gap-1 me-4"
+                  title={copied ? "Copied!" : "Copy code"}
+                >
+                  {copied ? (
+                    <i className="bi bi-check2 bg-dark"></i>
+                  ) : (
+                    <i className="bi bi-link-45deg bg-dark"></i>
+                  )}
+                </button>
+
+                <Editor
+                  height="100%"
+                  width="100%"
+                  defaultLanguage="html"
+                  theme="vs-dark"
+                  value={code}
+                  onChange={handleChange}
+                  onMount={handleEditorMount}
+                  options={{
+                    minimap: { enabled: false },
+                    fontSize: 16,
+                    automaticLayout: true,
+                    wordWrap: "on",
+                  }}
+                />
+              </div>
+
+              {/* Input Component */}
+              <div id="inputComponent">
+                <InputComponent
+                  setCode={handleSetCode}
+                  setThemeImages={setThemeImages}
+                  setGeneratedFiles={setGeneratedFiles}
+                />
+              </div>
+            </div>
+
+            {/* Divider - Hidden in fullscreen mode */}
+            <div
+              className="cursor-col-resize h-full w-1 bg-gray-300 hover:bg-gray-400"
+              onMouseDown={handleMouseDown}
+            />
+          </>
+        )}
+
+        {/* Right: Live Preview - Takes full width in fullscreen mode */}
         <div
-          className="cursor-col-resize h-full w-1 bg-gray-300 hover:bg-gray-400"
-          onMouseDown={handleMouseDown}
-        />
+          className={`flex-1 h-full min-h-0 flex justify-center items-center transition-all duration-300 relative ${isFullscreen ? 'fullscreen-preview' : ''
+            }`}
+          style={{
+            width: isFullscreen ? '100%' : 'auto',
+            backgroundColor: "#ffffffff",
+            backgroundImage:
+              deviceMode !== "mobile" && themeImages.length
+                ? `url(${themeImages[0]})`
+                : "none",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+          }}
+        >
+          {deviceMode === "mobile" ? (
+            <div
+              className="relative transition-all duration-300"
+              style={{
+                marginTop: "0px",
+                width: "317px",
+                height: "610px",
+                borderRadius: "40px",
+                border: "12px solid #222",
+                boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+                background: "#000",
+                overflow: "hidden",
+                position: "relative",
+              }}
+            >
+              <div
+                style={{
+                  width: "120px",
+                  height: "25px",
+                  background: "#000",
+                  borderRadius: "12px",
+                  position: "absolute",
+                  top: "8px",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  zIndex: 10,
+                }}
+              ></div>
 
-        {/* Right: Live Preview */}
-<div
-  className="flex-1 h-full min-h-0 flex justify-center items-center transition-all duration-300 relative"
-  style={{
-    backgroundColor: "#ffffffff", // always a clean neutral background
-    backgroundImage:
-      deviceMode !== "mobile" && themeImages.length
-        ? `url(${themeImages[0]})`
-        : "none",
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    backgroundRepeat: "no-repeat",
-  }}
->
-  {/* ❌ Removed the blurred overlay — clean background now */}
-
-  {deviceMode === "mobile" ? (
-    <div
-      className="relative transition-all duration-300"
-      style={{
-        marginTop: "0px",
-        width: "317px",
-        height: "610px", // iPhone 14 height
-        borderRadius: "40px",
-        border: "12px solid #222",
-        boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
-        background: "#000",
-        overflow: "hidden",
-        position: "relative",
-      }}
-    >
-      {/* 🔹 Notch */}
-      <div
-        style={{
-          width: "120px",
-          height: "25px",
-          background: "#000",
-          borderRadius: "12px",
-          position: "absolute",
-          top: "8px",
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 10,
-        }}
-      ></div>
-
-      {/* 🔹 iframe content */}
-      <iframe
-        key={refreshKey}
-        className="absolute top-0 left-0 rounded-[28px] transition-all duration-300"
-        srcDoc={codeForPreview}
-        title="mobile-preview"
-        style={{
-          width: "100%",
-          height: "100%",
-          border: "none",
-          borderRadius: "28px",
-          background: "#fff",
-        }}
-        sandbox="allow-scripts allow-modals"
-      />
-    </div>
-  ) : (
-    // 💻 Desktop Mode
-    <iframe
-      key={refreshKey}
-      className="w-full h-full border-none transition-all duration-300"
-      srcDoc={codeForPreview}
-      title="desktop-preview"
-      sandbox="allow-scripts allow-modals"
-    />
-  )}
-</div>
-
+              <iframe
+                key={refreshKey}
+                className="absolute top-0 left-0 rounded-[28px] transition-all duration-300"
+                srcDoc={codeForPreview}
+                title="mobile-preview"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  border: "none",
+                  borderRadius: "28px",
+                  background: "#fff",
+                }}
+                sandbox="allow-scripts allow-modals"
+              />
+            </div>
+          ) : (
+            <iframe
+              key={refreshKey}
+              className="w-full h-full border-none transition-all duration-300"
+              srcDoc={codeForPreview}
+              title="desktop-preview"
+              sandbox="allow-scripts allow-modals"
+            />
+          )}
+        </div>
       </div>
     </div>
   );
-}  
+}

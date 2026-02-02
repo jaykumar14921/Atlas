@@ -1,31 +1,115 @@
-#btnCopy{
-    width: 100px;
-    margin-left: 85%;
-    /* margin-right: 5%; */
+/* Fullscreen Preview Mode */
+.fullscreen-preview {
+  width: 100% !important;
+  transition: all 0.3s ease;
 }
 
-iframe {
-  transition: all 0.3s ease-in-out;
+/* Hide file explorer and editor in fullscreen mode */
+.fullscreen-preview ~ .file-explorer-overlay,
+.fullscreen-preview ~ .cursor-col-resize,
+.fullscreen-preview ~ .relative.flex-col {
+  display: none !important;
 }
 
-@media (prefers-color-scheme: dark) {
-  .dark-iframe {
-    background: #111;
-    border-color: #333;
-  }
+/* Editor Header Bar */
+.editor-header {
+  background: #2d2d2d;
+  border-bottom: 1px solid #3e3e3e !important;
+  padding: 8px 12px;
+  min-height: 50px;
 }
 
+/* File Name Badge */
+.file-name-badge {
+  background: #0d6efd;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 15px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Courier New', monospace;
+}
 
-@keyframes slideDown {
+/* File Explorer Overlay */
+.file-explorer-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 300px;
+  height: 100%;
+  background: #1e1e1e;
+  border-right: 1px solid #333;
+  z-index: 1000;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+  animation: slideInLeft 0.3s ease-out;
+}
+
+@keyframes slideInLeft {
   from {
+    transform: translateX(-100%);
     opacity: 0;
-    transform: translateY(-4px);
   }
   to {
+    transform: translateX(0);
     opacity: 1;
-    transform: translateY(0);
   }
 }
-.animate-slideDown {
-  animation: slideDown 0.2s ease-in-out;
+
+/* Smooth transitions for layout changes */
+.flex-row {
+  transition: all 0.3s ease;
+}
+
+/* Floating Copy Button */
+.floating-copy-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  background: rgba(33, 37, 41, 0.9) !important;
+  border: 1px solid #495057 !important;
+  backdrop-filter: blur(4px);
+  transition: all 0.2s ease;
+}
+
+.floating-copy-btn:hover {
+  background: rgba(33, 37, 41, 1) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Ensure Monaco editor container has proper positioning */
+.flex-grow.relative {
+  position: relative;
+}
+
+
+/* Default state */
+.invert-btn {
+    background-color: black !important;
+    color: white !important;
+    border: 1px solid black !important;
+    transition: all 0.2s ease;
+}
+
+/* Make icon inherit the text color */
+.invert-btn .bi {
+    color: inherit !important;
+}
+
+/* Hover state: invert colors */
+.invert-btn:hover {
+    background-color: white !important;
+    color: black !important;
+    border-color: black !important;
+}
+
+/* Ensure icon also inverts on hover */
+.invert-btn:hover .bi {
+    color: black !important;
+}
+
+.btn .bi {
+    color: inherit !important;
+    background-color: transparent !important;
 }
