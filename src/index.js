@@ -5,7 +5,7 @@ import 'bootstrap-icons/font/bootstrap-icons.css';
 import './index.css';
 
 import { IndexComponent } from './Components/indexComponents/indexComponent';
-import { initErrorHandling } from './utils/errorHandler';
+import { initErrorHandling } from '../utils/errorHandler';
 
 // Call this once in your app
 initErrorHandling();
