@@ -114,3 +114,10 @@
     box-shadow: none;              /* No shadow */
 }
 
+
+.custom-inverted-btn i,
+.btn-sm i {
+    color: inherit !important;      /* Always match parent text color */
+    background: transparent !important;
+}
+
