@@ -54,6 +54,7 @@ export function CodeEditor() {
   const [isFullscreen, setIsFullscreen] = useState(false); // Toggle for full-width preview
   const containerRef = useRef(null);
   const editorRef = useRef(null);
+  const resizeTimeoutRef = useRef(null);
 
   // Toggle between split view and full-width preview
   const handleToggleFullscreen = () => {
@@ -96,26 +97,84 @@ export function CodeEditor() {
     editorRef.current = editor;
   };
 
+  // Debounced resize handler to prevent ResizeObserver errors
+  const debouncedLayout = () => {
+    if (resizeTimeoutRef.current) {
+      clearTimeout(resizeTimeoutRef.current);
+    }
+    
+    resizeTimeoutRef.current = setTimeout(() => {
+      if (editorRef.current) {
+        try {
+          editorRef.current.layout();
+        } catch (error) {
+          // Silently catch ResizeObserver errors
+          if (!error.message.includes('ResizeObserver')) {
+            console.error('Editor layout error:', error);
+          }
+        }
+      }
+    }, 100);
+  };
+
   useEffect(() => {
     const handleResize = () => {
-      requestAnimationFrame(() => editorRef.current?.layout());
+      debouncedLayout();
     };
+    
+    // Suppress ResizeObserver errors globally
+    const resizeObserverErrHandler = (e) => {
+      if (e.message === 'ResizeObserver loop completed with undelivered notifications.' || 
+          e.message.includes('ResizeObserver loop limit exceeded')) {
+        e.stopImmediatePropagation();
+        return false;
+      }
+    };
+    
+    window.addEventListener('error', resizeObserverErrHandler);
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    
+    return () => {
+      window.removeEventListener('error', resizeObserverErrHandler);
+      window.removeEventListener("resize", handleResize);
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
+      }
+    };
   }, []);
 
   const handleMouseDown = () => setIsDragging(true);
-  const handleMouseUp = () => setIsDragging(false);
+  
+  const handleMouseUp = () => {
+    if (isDragging) {
+      setIsDragging(false);
+      // Trigger layout after drag ends
+      debouncedLayout();
+    }
+  };
+  
   const handleMouseMove = (e) => {
     if (!isDragging || !containerRef.current || isFullscreen) return;
+    
     const containerWidth = containerRef.current.getBoundingClientRect().width;
     const newWidth =
       ((e.clientX - containerRef.current.getBoundingClientRect().left) /
         containerWidth) *
       100;
+    
     if (newWidth > 20 && newWidth < 80) {
       setEditorWidth(newWidth);
-      requestAnimationFrame(() => editorRef.current?.layout());
+      // Update layout in real-time for smooth dragging
+      if (editorRef.current) {
+        try {
+          editorRef.current.layout();
+        } catch (error) {
+          // Silently catch ResizeObserver errors
+          if (!error.message.includes('ResizeObserver')) {
+            console.error('Editor layout error:', error);
+          }
+        }
+      }
     }
   };
 
@@ -202,6 +261,11 @@ export function CodeEditor() {
     }
   }, [code]);
 
+  // Layout editor when width changes
+  useEffect(() => {
+    debouncedLayout();
+  }, [editorWidth, isFullscreen]);
+
   let codeForPreview = code;
   const isFullHtml =
     code.trim().toLowerCase().startsWith("<!doctype") ||
@@ -237,7 +301,7 @@ export function CodeEditor() {
   }
 
   return (
-    <div className="w-full h-[99vh] flex flex-col">
+     <div className="w-full flex flex-col" style={{ height: 'calc(100vh - 15px)' }}>
       <NavBarComponent
         onRefresh={handleRefreshPreview}
         onDeviceChange={handleDeviceChange}
@@ -295,8 +359,8 @@ export function CodeEditor() {
 
               </div>
 
-              {/* Monaco Editor with Floating Copy Button */}
-              <div className="flex-grow overflow-auto min-h-0 relative">
+              {/* Monaco Editor with Floating Copy Button - Full Height */}
+              <div className="flex-grow overflow-auto min-h-0 relative" style={{ height: '100%' }}>
                 {/* Floating Copy Button */}
                 <button
                   id="btnCopy"
@@ -322,14 +386,25 @@ export function CodeEditor() {
                   options={{
                     minimap: { enabled: false },
                     fontSize: 16,
-                    automaticLayout: true,
+                    automaticLayout: false, // Changed to false - we handle it manually
                     wordWrap: "on",
                   }}
                 />
               </div>
 
-              {/* Input Component */}
-              <div id="inputComponent">
+              {/* Input Component - Floating at Bottom */}
+              <div 
+                id="inputComponent" 
+                style={{ 
+                  position: 'absolute', 
+                  bottom: 0, 
+                  left: 0, 
+                  right: 0, 
+                  zIndex: 10,
+                  maxHeight: '50vh',
+                  overflowY: 'auto'
+                }}
+              >
                 <InputComponent
                   setCode={handleSetCode}
                   setThemeImages={setThemeImages}

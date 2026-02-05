@@ -7,45 +7,96 @@ export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [images, setImages] = useState([]); // [{ file: File, url: string, name: string }]
-  const [zipFile, setZipFile] = useState(null); // { file: File, name: string, size: string }
+  const [zipFiles, setZipFiles] = useState([]); // [{ file: File, name: string, size: string }]
   const [cacheInfo, setCacheInfo] = useState(null);
   const [showCacheNotification, setShowCacheNotification] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [showUploadDropdown, setShowUploadDropdown] = useState(false);
   const fileRef = useRef(null);
+  const imageRef = useRef(null);
   const textareaRef = useRef(null);
+  const dropdownRef = useRef(null);
   const { checkCache, storeInCache, compareVersions } = useCacheManager();
 
   // ✅ API URL from environment variable
   const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
+  // ✅ Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowUploadDropdown(false);
+      }
+    };
+
+    if (showUploadDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showUploadDropdown]);
+
   // =====================
-  // 🔹 Handle file upload (images AND zip in one input)
+  // 🔹 Handle ZIP file upload (up to 4 files)
   // =====================
-  const handleFileUpload = (e) => {
+  const handleZipUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    const validZipFiles = [];
+
+    files.forEach((file) => {
+      if (!file.name.toLowerCase().endsWith('.zip')) {
+        setErrorMessage("Please select valid ZIP files only");
+        return;
+      }
+
+      // Validate file size (max 50MB)
+      const maxSize = 50 * 1024 * 1024; // 50MB
+      if (file.size > maxSize) {
+        setErrorMessage(`${file.name} is too large. Maximum size is 50MB`);
+        return;
+      }
+
+      validZipFiles.push({
+        file: file,
+        name: file.name,
+        size: file.size > 1024 * 1024 
+          ? (file.size / (1024 * 1024)).toFixed(2) + ' MB'
+          : (file.size / 1024).toFixed(2) + ' KB'
+      });
+    });
+
+    if (validZipFiles.length > 0) {
+      setZipFiles((prev) => {
+        const updated = [...prev, ...validZipFiles];
+        // Limit to 4 ZIP files
+        if (updated.length > 4) {
+          setErrorMessage("Maximum 4 ZIP files allowed");
+          return updated.slice(0, 4);
+        }
+        return updated;
+      });
+      
+      console.log(`✅ ${validZipFiles.length} ZIP file(s) selected`);
+    }
+    
+    setShowUploadDropdown(false);
+  };
+
+  // =====================
+  // 🔹 Handle image upload
+  // =====================
+  const handleImageUpload = (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
     const imageFiles = [];
-    let zipFileFound = null;
 
     files.forEach((file) => {
-      // Check if it's a ZIP file
-      if (file.name.toLowerCase().endsWith('.zip')) {
-        // Validate file size (max 50MB)
-        const maxSize = 50 * 1024 * 1024; // 50MB
-        if (file.size > maxSize) {
-          setErrorMessage("ZIP file is too large. Maximum size is 50MB");
-          return;
-        }
-        zipFileFound = {
-          file: file,
-          name: file.name,
-          size: (file.size / 1024).toFixed(2) + ' KB'
-        };
-        console.log(`✅ ZIP file selected: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
-      } 
-      // Check if it's an image
-      else if (file.type.startsWith('image/')) {
+      if (file.type.startsWith('image/')) {
         imageFiles.push({
           file: file,
           url: URL.createObjectURL(file),
@@ -54,7 +105,6 @@ export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
       }
     });
 
-    // Update state with images
     if (imageFiles.length > 0) {
       setImages((prev) => {
         const updated = [...prev, ...imageFiles];
@@ -63,10 +113,7 @@ export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
       });
     }
 
-    // Update state with ZIP (only one ZIP at a time)
-    if (zipFileFound) {
-      setZipFile(zipFileFound);
-    }
+    setShowUploadDropdown(false);
   };
 
   // ✅ Cleanup URLs ONLY when component unmounts
@@ -77,9 +124,14 @@ export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Trigger file picker
-  const openFilePicker = () => {
+  // Trigger file picker for ZIP
+  const openZipPicker = () => {
     fileRef.current?.click();
+  };
+
+  // Trigger file picker for images
+  const openImagePicker = () => {
+    imageRef.current?.click();
   };
 
   // Remove a single image preview
@@ -93,9 +145,13 @@ export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
     });
   };
 
-  // Remove zip file
-  const removeZipFile = () => {
-    setZipFile(null);
+  // Remove a single zip file
+  const removeZipAt = (index) => {
+    setZipFiles((prev) => {
+      const next = prev.slice();
+      next.splice(index, 1);
+      return next;
+    });
     if (fileRef.current) {
       fileRef.current.value = "";
     }
@@ -121,11 +177,13 @@ export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
         ? images.map(img => `${img.name}-${img.file.size}`).join('|')
         : '';
       
-      const zipHash = zipFile ? `zip:${zipFile.name}-${zipFile.file.size}` : '';
+      const zipHash = zipFiles.length > 0 
+        ? zipFiles.map(zip => `zip:${zip.name}-${zip.file.size}`).join('|')
+        : '';
       const fullHash = [imageHash, zipHash].filter(Boolean).join('||');
       
       // Step 1: Check if code exists in cache (skip if zip is uploaded - always regenerate)
-      if (!zipFile) {
+      if (zipFiles.length === 0) {
         console.log("🔍 Checking cache for prompt...");
         const cacheResult = await checkCache(prompt, fullHash);
 
@@ -151,7 +209,7 @@ export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
       }
 
       // Step 2: Code not in cache or zip uploaded, generate new code
-      console.log(zipFile ? "📦 ZIP file uploaded, processing project..." : "📝 Code not cached, generating new code...");
+      console.log(zipFiles.length > 0 ? `📦 ${zipFiles.length} ZIP file(s) uploaded, processing project...` : "📝 Code not cached, generating new code...");
 
       // ✅ Create FormData to send prompt, images, and zip
       const formData = new FormData();
@@ -162,15 +220,17 @@ export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
         formData.append('images', img.file);
       });
 
-      // ✅ Add zip file if uploaded
-      if (zipFile) {
-        formData.append('projectZip', zipFile.file);
+      // ✅ Add zip files if uploaded
+      if (zipFiles.length > 0) {
+        zipFiles.forEach((zip) => {
+          formData.append('projectZip', zip.file);
+        });
       }
 
-      console.log(`📤 Sending request with ${images.length} image(s)${zipFile ? ' and 1 ZIP file' : ''}`);
+      console.log(`📤 Sending request with ${images.length} image(s)${zipFiles.length > 0 ? ` and ${zipFiles.length} ZIP file(s)` : ''}`);
 
       // ✅ Choose endpoint based on whether zip is uploaded
-      const endpoint = zipFile ? '/generate-from-project' : '/generate-stream';
+      const endpoint = zipFiles.length > 0 ? '/generate-from-project' : '/generate-stream';
 
       // ✅ Send FormData
       const response = await fetch(`${API_URL}${endpoint}`, {
@@ -221,14 +281,14 @@ export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
       }
 
       // Step 3: Store generated code in cache (only if not from zip)
-      if (!zipFile) {
+      if (zipFiles.length === 0) {
         console.log("💾 Storing code in cache...");
         await storeInCache(prompt, generatedCode, fileStructure, fullHash);
       }
 
       setCacheInfo({
         fromCache: false,
-        message: zipFile ? "Project upgraded successfully" : "New code generated and cached successfully",
+        message: zipFiles.length > 0 ? "Project upgraded successfully" : "New code generated and cached successfully",
       });
       setShowCacheNotification(true);
       setTimeout(() => setShowCacheNotification(false), 5000);
@@ -290,7 +350,7 @@ export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
         <textarea
           ref={textareaRef}
           className="form-control mt-1"
-          placeholder={zipFile 
+          placeholder={zipFiles.length > 0
             ? "Describe what you want to fix, upgrade, or complete in the project..." 
             : "Ask Atlas anything..."}
           rows="2"
@@ -304,72 +364,172 @@ export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
           }}
         />
 
-        {/* Hidden file input - accepts both images and ZIP */}
+        {/* Hidden file inputs */}
         <input
           ref={fileRef}
           type="file"
-          accept="image/*,.zip"
+          accept=".zip"
           multiple
           style={{ display: "none" }}
-          onChange={handleFileUpload}
+          onChange={handleZipUpload}
+        />
+        <input
+          ref={imageRef}
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ display: "none" }}
+          onChange={handleImageUpload}
         />
 
-        {/* ZIP File Preview */}
-        {zipFile && (
-          <div className="zip-preview mt-2 p-2 border rounded bg-light d-flex align-items-center justify-content-between">
-            <div className="d-flex align-items-center gap-2">
-              <i className="bi bi-file-zip-fill text-primary fs-4"></i>
-              <div>
-                <div className="fw-bold small">{zipFile.name}</div>
-                <div className="text-muted" style={{ fontSize: '0.75rem' }}>{zipFile.size}</div>
+        {/* ZIP Files Preview - Compact */}
+        {zipFiles.length > 0 && (
+          <div className="d-flex gap-1 mt-2" style={{ overflowX: 'auto', flexWrap: 'nowrap', maxWidth: '100%' }}>
+            {zipFiles.map((zip, idx) => (
+              <div 
+                key={idx} 
+                className="d-inline-flex align-items-center gap-1 px-2 py-1 border rounded"
+                style={{ 
+                  fontSize: '0.7rem', 
+                  maxWidth: '140px',
+                  minWidth: '120px',
+                  backgroundColor: 'black',
+                  color: 'white',
+                  flexShrink: 0
+                }}
+              >
+                <i className="bi bi-file-earmark-zip" style={{ fontSize: '0.85rem', color: 'white' }}></i>
+                <span className="text-truncate" style={{ maxWidth: '80px' }} title={zip.name}>
+                  {zip.name}
+                </span>
+                <button
+                  type="button"
+                  className="btn-close btn-close-white"
+                  style={{ fontSize: '0.5rem', padding: '0.2rem' }}
+                  onClick={() => removeZipAt(idx)}
+                  disabled={loading}
+                ></button>
               </div>
-            </div>
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-danger"
-              onClick={removeZipFile}
-              disabled={loading}
-            >
-              <i className="bi bi-x-lg"></i>
-            </button>
+            ))}
           </div>
         )}
 
         {/* Upload + Previews + Generate Button */}
         <div className="input-actions d-flex align-items-center justify-content-between mt-3 flex-wrap">
-          {/* Left Side: Upload Button + Image Previews */}
+          {/* Left Side: Upload Drop-up + Image Previews */}
           <div className="d-flex align-items-center gap-3 flex-wrap">
-            {/* Single Upload Button for Images & ZIP */}
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-2"
-              onClick={openFilePicker}
-              disabled={loading}
-              title="Upload images or project ZIP"
-            >
-              <img
-                src={logo}
-                alt="upload-icon"
-                style={{ width: 18, height: 18, borderRadius: 4 }}
-              />
-              Upload Files
-            </button>
+            {/* Upload Drop-up with "+" Button */}
+            <div className="position-relative" ref={dropdownRef}>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary d-flex align-items-center justify-content-center"
+                onClick={() => setShowUploadDropdown(!showUploadDropdown)}
+                disabled={loading}
+                title="Upload files"
+                style={{ 
+                  backgroundColor: 'black',
+                  width: '32px', 
+                  height: '32px',
+                  padding: '0',
+                  fontSize: '18px',
+                  fontWeight: 'bold'
+                }}
+              >
+                +
+              </button>
 
-            {/* Image Previews */}
+              {/* Drop-up Menu */}
+              {showUploadDropdown && (
+                <div 
+                  className="border rounded shadow-sm"
+                  style={{
+                    backgroundColor: 'black',
+                    bottom: '100%',
+                    left: '0',
+                    marginBottom: '1px',
+                    minWidth: '170px',
+                    zIndex: 1000,
+                    position: 'absolute'
+                  }}
+                >
+                  <div className="list-group list-group-flush">
+                    <button
+                      type="button"
+                      className="list-group-item list-group-item-action d-flex align-items-center gap-2 py-2"
+                      onClick={openZipPicker}
+                      disabled={loading}
+                      style={{ 
+                        fontSize: '0.9rem', 
+                        backgroundColor: 'black',
+                        color: 'white',
+                        border: 'none',
+                        transition: 'background-color 0.2s ease',
+                        cursor: 'pointer'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#333';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'black';
+                      }}
+                    >
+                      <i className="bi bi-link-45deg" style={{ fontSize: '1.1rem', color: 'inherit' }}></i>
+                      <span style={{ color: 'inherit' }}>files/folders ZIP</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="list-group-item list-group-item-action d-flex align-items-center gap-2 py-2"
+                      onClick={openImagePicker}
+                      disabled={loading}
+                      style={{ 
+                        fontSize: '0.9rem', 
+                        backgroundColor: 'black',
+                        color: 'white',
+                        border: 'none',
+                        transition: 'background-color 0.2s ease',
+                        cursor: 'pointer'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#333';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'black';
+                      }}
+                    >
+                      <i className="bi bi-image" style={{ fontSize: '1.1rem', color: 'inherit' }}></i>
+                      <span style={{ color: 'inherit' }}>Images</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Image Previews - 2px smaller */}
             {images.length > 0 && (
               <div className="d-flex align-items-center gap-2 flex-wrap">
                 {images.slice(0, 3).map((img, idx) => (
-                  <div key={idx} className="preview-box">
+                  <div key={idx} className="preview-box" style={{ width: '38px', height: '38px' }}>
                     <img
                       src={img.url}
                       alt={`preview-${idx}`}
                       className="preview-img"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '4px' }}
                     />
                     <button
                       type="button"
                       className="remove-btn"
                       onClick={() => removeImageAt(idx)}
                       disabled={loading}
+                      style={{
+                        position: 'absolute',
+                        top: '-4px',
+                        right: '-4px',
+                        width: '16px',
+                        height: '16px',
+                        fontSize: '10px',
+                        padding: '0',
+                        lineHeight: '1'
+                      }}
                     >
                       ×
                     </button>
@@ -379,6 +539,14 @@ export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
                   <div
                     className="preview-more"
                     title={`${images.length - 3} more image(s)`}
+                    style={{
+                      width: '38px',
+                      height: '38px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.75rem'
+                    }}
                   >
                     +{images.length - 3}
                   </div>
@@ -397,7 +565,7 @@ export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
             {loading ? (
               <>
                 <span className="spinner-border spinner-border-sm me-2" role="status"></span>
-                {zipFile ? "Processing..." : "Generating..."}
+                {zipFiles.length > 0 ? "Processing..." : "Generating..."}
               </>
             ) : (
               "Generate"
