@@ -19,7 +19,7 @@ export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
   const { checkCache, storeInCache, compareVersions } = useCacheManager();
 
   // ✅ API URL from environment variable
-  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+  const API_URL = process.env.ANTHROPIC_API_KEY || 'http://localhost:5000';
 
   // ✅ Close dropdown when clicking outside
   useEffect(() => {
