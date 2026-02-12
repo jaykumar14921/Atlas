@@ -1,5 +1,5 @@
 import './navBarComponent.css';
-import mountain from '../../assets/mm.png'
+import mountain from '../../assets/mountain.png'
 export function NavBarComponent({
   onRefresh,
   onDeviceChange,

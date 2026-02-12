@@ -10,7 +10,6 @@ import { NavBarComponent } from "../navBarComponents/navBarComponent";
 import { FileExplorerComponent } from "../fileExplorerComponents/fileExplorerComponent";
 import JSZip from "jszip";
 import "./resultComponent.css";
-import arrow from '../../assets/curry_arrow_icon.png';
 
 const defaultCode = `<!DOCTYPE html>
 <html>
@@ -21,14 +20,14 @@ const defaultCode = `<!DOCTYPE html>
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
   <body class="flex justify-center items-center h-screen overflow-hidden bg-white font-sans text-center px-6">
-    <div class="w-full" style="margin-top: 60px">
+    <div class="w-full" style="margin-top: 200px">
       <span class="text-xs rounded-full mb-2 inline-block px-2 py-1 border border-amber-500/15 bg-amber-500/15 text-amber-500">🔥 New version dropped!</span>
       <h1 class="text-4xl lg:text-6xl font-bold font-sans">
         <span class="text-2xl lg:text-4xl text-gray-400 block font-medium">I'm ready to work,</span>
         Ask me anything.
       </h1>
     </div>
-    <img src=${arrow} class="absolute bottom-8 left-0 w-[100px] transform rotate-[30deg]" />
+    <img src="https://huggingface.co/deepsite/arrow.svg" class="absolute bottom-8 left-0 w-[100px] transform rotate-[30deg]" />
   </body>
 </html>`;
 
@@ -57,65 +56,19 @@ export function CodeEditor() {
   const [showFileExplorer, setShowFileExplorer] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   
-  // ✅ NEW: Streaming state to control debounce behavior
-  const [isStreaming, setIsStreaming] = useState(false);
-  
   const containerRef = useRef(null);
   const editorRef = useRef(null);
   const resizeTimeoutRef = useRef(null);
-  const iframeRef = useRef(null);
-  const previewUpdateTimerRef = useRef(null);
 
-  // ✅ IMPROVED DEBOUNCE LOGIC
-  // - During streaming: Updates every 3 seconds to avoid flickering
-  // - After streaming ends: Immediate final update
-  // - Manual edits: 1-second debounce for responsive editing
+  // ✅ 3-SECOND DEBOUNCE (Fixes flickering - Deepseek pattern)
   useEffect(() => {
-    console.log(`[PREVIEW] Code length: ${code.length}, isStreaming: ${isStreaming}`);
-
-    // During streaming, only start timer if there isn't one already running
-    if (isStreaming) {
-      if (!previewUpdateTimerRef.current) {
-        console.log('[TIMER] Starting new 3-second timer during streaming');
-        previewUpdateTimerRef.current = setTimeout(() => {
-          setPreviewCode(code);
-          console.log(`✅ Preview updated during streaming (3s delay) - ${code.length} chars`);
-          previewUpdateTimerRef.current = null; // Clear ref so next update can start
-        }, 3000);
-      }
-    } else {
-      // Not streaming - clear any existing timer and start a 1-second one
-      if (previewUpdateTimerRef.current) {
-        clearTimeout(previewUpdateTimerRef.current);
-      }
-      previewUpdateTimerRef.current = setTimeout(() => {
-        setPreviewCode(code);
-        console.log(`✅ Preview updated (1s delay) - ${code.length} chars`);
-        previewUpdateTimerRef.current = null;
-      }, 1000);
-    }
-
-    return () => {
-      // Only clear on unmount, not on every code change during streaming
-      if (!isStreaming && previewUpdateTimerRef.current) {
-        clearTimeout(previewUpdateTimerRef.current);
-      }
-    };
-  }, [code, isStreaming]);
-
-  // ✅ NEW: Immediate preview update when streaming stops
-  useEffect(() => {
-    if (!isStreaming) {
-      // Clear any running timer
-      if (previewUpdateTimerRef.current) {
-        clearTimeout(previewUpdateTimerRef.current);
-        previewUpdateTimerRef.current = null;
-      }
-      // Immediate update with final code
+    const timer = setTimeout(() => {
       setPreviewCode(code);
-      console.log(`✅ Final preview update (streaming ended) - ${code.length} chars`);
-    }
-  }, [isStreaming]);
+      console.log('✅ Preview updated after 3s delay');
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [code]);
 
   const handleToggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
@@ -124,23 +77,9 @@ export function CodeEditor() {
   const handleDownloadZip = async () => {
     try {
       const zip = new JSZip();
-      
-      // Check if generatedFiles has actual content
-      const hasContent = generatedFiles.some(file => file.content && file.content.length > 0);
-      
-      if (!hasContent && code) {
-        // Fallback: use the code state if generatedFiles is empty
-        console.log('⚠️ generatedFiles empty, using code state for download');
-        zip.file('index.html', code);
-      } else {
-        // Use generatedFiles
-        generatedFiles.forEach(file => {
-          if (file.content) {
-            zip.file(file.path, file.content);
-          }
-        });
-      }
-      
+      generatedFiles.forEach(file => {
+        zip.file(file.path, file.content);
+      });
       const content = await zip.generateAsync({ type: "blob" });
       const url = URL.createObjectURL(content);
       const a = document.createElement("a");
@@ -154,24 +93,6 @@ export function CodeEditor() {
     } catch (error) {
       console.error("Error creating ZIP file:", error);
       alert("Error downloading project files. Please try again.");
-    }
-  };
-
-  // ✅ NEW: Proper iframe refresh function
-  const handleRefreshPreview = () => {
-    console.log('🔄 Refreshing iframe preview...');
-    
-    // Force iframe reload by temporarily clearing and restoring srcDoc
-    if (iframeRef.current) {
-      const currentSrcDoc = iframeRef.current.srcdoc;
-      iframeRef.current.srcdoc = '';
-      
-      setTimeout(() => {
-        if (iframeRef.current) {
-          iframeRef.current.srcdoc = currentSrcDoc;
-          console.log('✅ Iframe refreshed');
-        }
-      }, 50);
     }
   };
 
@@ -272,23 +193,12 @@ export function CodeEditor() {
   };
 
   const handleFileStructure = (files) => {
-    // Safety check - ensure files is an array
-    if (!Array.isArray(files)) {
-      console.error('handleFileStructure received non-array:', files);
-      return;
-    }
-    
     const hasRealFiles = files.some(f => !f.isDefault);
     
     if (hasRealFiles) {
       const filteredFiles = files.filter(file => !file.isDefault);
       setGeneratedFiles(filteredFiles);
-      
-      // Update current file if it exists in new structure
-      const currentInNew = filteredFiles.find(f => f.path === currentFile.path);
-      if (currentInNew) {
-        handleFileSelect(currentInNew.path, currentInNew.content);
-      } else if (filteredFiles.length > 0) {
+      if (filteredFiles.length > 0) {
         handleFileSelect(filteredFiles[0].path, filteredFiles[0].content);
       }
     } else {
@@ -296,24 +206,19 @@ export function CodeEditor() {
     }
   };
 
-  // ✅ IMPROVED: Code updates from streaming with live file explorer support
-  const handleSetCode = (newCode, streamingState = false, shouldUpdateFiles = true) => {
-    setCode(newCode);
-    setIsStreaming(streamingState);
+  // ✅ SET CODE FROM INPUT COMPONENT (During streaming)
+  const handleSetCode = (newCode) => {
+    setCode(newCode);  // Monaco updates immediately
+    // Preview updates after 3s (via useEffect)
     
     setCurrentFile(prev => ({ ...prev, content: newCode }));
-    
-    // ✅ Update generatedFiles to keep file explorer in sync
-    // Only update if shouldUpdateFiles is true (avoid conflicts during streaming)
-    if (shouldUpdateFiles && currentFile) {
-      setGeneratedFiles(prev =>
-        prev.map(file =>
-          file.path === currentFile.path
-            ? { ...file, content: newCode }
-            : file
-        )
-      );
-    }
+    setGeneratedFiles(prev =>
+      prev.map(file =>
+        file.path === currentFile.path
+          ? { ...file, content: newCode }
+          : file
+      )
+    );
   };
 
   const handleClearFiles = () => {
@@ -326,10 +231,7 @@ export function CodeEditor() {
     ]);
     setCurrentFile({ path: "index.html", content: defaultCode });
     setCode(defaultCode);
-    setPreviewCode(defaultCode);
     setShowFileExplorer(false);
-    setIsStreaming(false);
-    console.log('🗑️ All files cleared, reset to default');
   };
 
   useEffect(() => {
@@ -339,7 +241,7 @@ export function CodeEditor() {
   return (
     <div className="w-full flex flex-col" style={{ height: 'calc(100vh - 15px)' }}>
       <NavBarComponent
-        onRefresh={handleRefreshPreview} 
+        onRefresh={handleClearFiles}
         onDeviceChange={handleDeviceChange}
         onDownloadZip={handleDownloadZip}
         onToggleFullscreen={handleToggleFullscreen}
@@ -348,11 +250,7 @@ export function CodeEditor() {
 
       <div
         ref={containerRef}
-        className="flex flex-row w-full relative"
-        style={{ 
-          height: 'calc(100vh - 75px)', // Fixed height minus navbar
-          overflow: 'hidden' // Prevent container from scrolling
-        }}
+        className="flex flex-row flex-grow w-full relative"
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
@@ -372,11 +270,7 @@ export function CodeEditor() {
           <>
             <div
               className="relative flex flex-col border-r"
-              style={{ 
-                width: `${editorWidth}%`, 
-                height: '100%', // Take full height of parent
-                overflow: 'hidden' // Prevent this column from scrolling
-              }}
+              style={{ width: `${editorWidth}%`, minHeight: 0 }}
             >
               <div className="bg-black editor-header d-flex justify-content-between align-items-center border-bottom">
                 <div className="d-flex align-items-center">
@@ -397,15 +291,7 @@ export function CodeEditor() {
                 </button>
               </div>
 
-              <div 
-                className="relative" 
-                style={{ 
-                  height: 'calc(100% - 40px)', // Full height minus header
-                  overflow: 'hidden', // Monaco handles its own scrolling
-                  display: 'flex',
-                  flexDirection: 'column'
-                }}
-              >
+              <div className="flex-grow overflow-auto min-h-0 relative" style={{ height: '100%' }}>
                 <button
                   id="btnCopy"
                   onClick={handleCopy}
@@ -453,7 +339,6 @@ export function CodeEditor() {
                   setCode={handleSetCode}
                   setThemeImages={setThemeImages}
                   setGeneratedFiles={handleFileStructure}
-                  setIsStreaming={setIsStreaming}  
                 />
               </div>
             </div>
@@ -467,12 +352,9 @@ export function CodeEditor() {
 
         {/* ✅ IFRAME PREVIEW - Uses previewCode (delayed 3s) */}
         <div
-          className={`flex justify-center items-center transition-all duration-300 relative ${isFullscreen ? 'fullscreen-preview' : ''}`}
+          className={`flex-1 h-full min-h-0 flex justify-center items-center transition-all duration-300 relative ${isFullscreen ? 'fullscreen-preview' : ''}`}
           style={{
             width: isFullscreen ? '100%' : 'auto',
-            height: '100%', // Fixed height
-            flex: isFullscreen ? 'none' : 1, // Flex grow when not fullscreen
-            overflow: 'auto', // Enable scrolling for the preview container
             backgroundColor: "#ffffff",
             backgroundImage:
               deviceMode !== "mobile" && themeImages.length
@@ -484,28 +366,20 @@ export function CodeEditor() {
           }}
         >
           {deviceMode === "mobile" ? (
-            <div style={{ 
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              width: '100%',
-              height: '100%', // Use full container height
-              overflow: 'hidden' // Prevent expansion
-            }}>
-              <div
-                className="relative transition-all duration-300"
-                style={{
-                  marginTop: "0px",
-                  width: "317px",
-                  height: "610px",
-                  borderRadius: "40px",
-                  border: "12px solid #222",
-                  boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
-                  background: "#000",
-                  overflow: "hidden",
-                  position: "relative",
-                }}
-              >
+            <div
+              className="relative transition-all duration-300"
+              style={{
+                marginTop: "0px",
+                width: "317px",
+                height: "610px",
+                borderRadius: "40px",
+                border: "12px solid #222",
+                boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+                background: "#000",
+                overflow: "hidden",
+                position: "relative",
+              }}
+            >
               <div
                 style={{
                   width: "120px",
@@ -520,9 +394,8 @@ export function CodeEditor() {
                 }}
               ></div>
 
-              {/* ✅ IFRAME - Uses previewCode (updates after delay) */}
+              {/* ✅ IFRAME - Uses previewCode (updates after 3s delay) */}
               <iframe
-                ref={iframeRef}
                 srcDoc={previewCode}
                 title="Mobile Preview"
                 sandbox="allow-scripts allow-forms allow-modals allow-popups"
@@ -534,26 +407,18 @@ export function CodeEditor() {
                 }}
               />
             </div>
-            </div>
           ) : (
-            // Desktop preview - wrapped in fixed container to prevent expansion
-            <div style={{ 
-              width: '100%', 
-              height: '100%', // Fixed height from parent
-              overflow: 'hidden' // Iframe manages its own scroll
-            }}>
-              <iframe
-                ref={iframeRef}
-                srcDoc={previewCode}
-                title="Preview"
-                sandbox="allow-scripts allow-forms allow-modals allow-popups"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  border: "none",
-                }}
-              />
-            </div>
+            // Desktop preview
+            <iframe
+              srcDoc={previewCode}
+              title="Preview"
+              sandbox="allow-scripts allow-forms allow-modals allow-popups"
+              style={{
+                width: "100%",
+                height: "100%",
+                border: "none",
+              }}
+            />
           )}
         </div>
       </div>

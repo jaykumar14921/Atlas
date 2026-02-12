@@ -3,12 +3,7 @@ import logo from "../../assets/imgLogo.jpg";
 import { useCacheManager } from "../../utils/useCacheManager";
 import "./inputComponent.css";
 
-export function InputComponent({ 
-  setCode, 
-  setThemeImages, 
-  setGeneratedFiles,
-  setIsStreaming
-}) {
+export function InputComponent({ setCode, setThemeImages, setGeneratedFiles }) {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [images, setImages] = useState([]);
@@ -21,8 +16,7 @@ export function InputComponent({
   const imageRef = useRef(null);
   const textareaRef = useRef(null);
   const dropdownRef = useRef(null);
-  const abortControllerRef = useRef(null);
-  const isGeneratingRef = useRef(false);
+  const abortControllerRef = useRef(null); // ✅ NEW: For aborting requests
   const { checkCache, storeInCache } = useCacheManager();
 
   const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -157,23 +151,21 @@ export function InputComponent({
     }
   };
 
+  // ✅ NEW: Function to stop/abort generation
   const handleStopGeneration = () => {
     if (abortControllerRef.current) {
       console.log("🛑 Aborting generation...");
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
       setLoading(false);
-      setIsStreaming(false);
-      isGeneratingRef.current = false;
       setErrorMessage("Generation stopped by user");
     }
   };
 
+  // ✅ FIXED: Generate with immediate clearing and abort functionality
   const handleGenerate = async () => {
-    console.log('[handleGenerate] Called. loading:', loading, 'prompt:', prompt.substring(0, 50));
-    
+    // ✅ If already generating, stop it
     if (loading) {
-      console.log('[handleGenerate] Already loading, calling handleStopGeneration');
       handleStopGeneration();
       return;
     }
@@ -183,12 +175,12 @@ export function InputComponent({
       return;
     }
 
-    console.log('[handleGenerate] Starting generation...');
-
+    // ✅ CRITICAL: Clear inputs IMMEDIATELY when button is clicked
     const promptToGenerate = prompt;
     const imagesToGenerate = [...images];
     const zipFilesToGenerate = [...zipFiles];
     
+    // Clear UI immediately
     setPrompt("");
     images.forEach((img) => URL.revokeObjectURL(img.url));
     setImages([]);
@@ -200,9 +192,9 @@ export function InputComponent({
     setLoading(true);
     setErrorMessage(null);
     setCacheInfo(null);
-    setCode("", false);
-    setIsStreaming(true);
+    setCode("");
 
+    // ✅ Create new AbortController for this request
     abortControllerRef.current = new AbortController();
 
     try {
@@ -215,6 +207,7 @@ export function InputComponent({
         : '';
       const fullHash = [imageHash, zipHash].filter(Boolean).join('||');
       
+      // Check cache (skip if zip uploaded)
       if (zipFilesToGenerate.length === 0) {
         console.log("🔍 Checking cache for prompt...");
         const cacheResult = await checkCache(promptToGenerate, fullHash);
@@ -235,8 +228,6 @@ export function InputComponent({
 
           setTimeout(() => setShowCacheNotification(false), 5000);
           setLoading(false);
-          setIsStreaming(false);
-          isGeneratingRef.current = false;
           abortControllerRef.current = null;
           return;
         }
@@ -261,6 +252,7 @@ export function InputComponent({
 
       const endpoint = zipFilesToGenerate.length > 0 ? '/generate-from-project' : '/generate-stream';
 
+      // ✅ Use AbortController signal
       const response = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
         body: formData,
@@ -277,25 +269,21 @@ export function InputComponent({
       let generatedCode = "";
       let fileStructure = [];
 
+      // Stream chunks directly to editor
       while (true) {
         const { done, value } = await reader.read();
-        if (done) {
-          console.log("✅ Stream complete");
-          setIsStreaming(false);
-          break;
-        }
+        if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        console.log('[RAW CHUNK]:', chunk.substring(0, 100), '...');
 
+        // Check for file structure
         if (chunk.includes("FILE_STRUCTURE:")) {
           const match = chunk.match(/FILE_STRUCTURE:(.*?)(?=\n\n|$)/);
           if (match) {
             try {
               fileStructure = JSON.parse(match[1]);
-              console.log("📁 Files parsed:", fileStructure.length, "files");
+              console.log("📁 Files parsed:", fileStructure);
               setGeneratedFiles(fileStructure);
-              console.log("📁 setGeneratedFiles called with", fileStructure.length, "files");
             } catch (e) {
               console.log("Could not parse file structure:", e);
             }
@@ -303,52 +291,21 @@ export function InputComponent({
         }
 
         const cleanChunk = chunk
-           .replace(/FILE_STRUCTURE:.*/g, "")
-           .replace(/data: /g, "")
-           .replace(/```html/g, "")
-           .replace(/```javascript/g, "")
-           .replace(/```/g, "")
-           .trim();
-
-        console.log('[CLEAN CHUNK]:', cleanChunk.substring(0, 100), '...');
-        console.log('[CLEAN CHUNK LENGTH]:', cleanChunk.length);
-        console.log('[INCLUDES [DONE]]:', cleanChunk.includes("[DONE]"));
+          .replace(/FILE_STRUCTURE:.*/g, "")
+          .replace(/data: /g, "")
+          .trim();
 
         if (cleanChunk && !cleanChunk.includes("[DONE]")) {
           generatedCode += cleanChunk;
-          console.log(`[STREAMING] Code updated: ${generatedCode.length} chars`);
-          setCode(generatedCode, true, false);
-        } else {
-          console.log('[SKIPPED] Chunk was empty or contained [DONE]');
+          setCode(prevCode => prevCode + cleanChunk);
         }
       }
 
-      generatedCode = generatedCode
-        .replace(/^```[\w]*\n/gm, '')
-        .replace(/\n```$/gm, '')
-        .trim();
-
+      // Store in cache (only if not from zip)
       if (zipFilesToGenerate.length === 0) {
         console.log("💾 Storing code in cache...");
         await storeInCache(promptToGenerate, generatedCode, fileStructure, fullHash);
       }
-
-      console.log('📝 Final code length:', generatedCode.length);
-      console.log('📁 File structure length:', fileStructure.length);
-      
-      const finalFiles = fileStructure.length > 0 
-        ? fileStructure.map((file, index) => ({
-            ...file,
-            content: index === 0 ? generatedCode : file.content
-          }))
-        : [{
-            path: 'index.html',
-            content: generatedCode,
-            isDefault: false
-          }];
-      
-      console.log('✅ Setting final files:', finalFiles);
-      setGeneratedFiles(finalFiles);
 
       setCacheInfo({
         fromCache: false,
@@ -358,17 +315,14 @@ export function InputComponent({
       setTimeout(() => setShowCacheNotification(false), 5000);
 
       setLoading(false);
-      setIsStreaming(false);
-      isGeneratingRef.current = false;
       abortControllerRef.current = null;
       
     } catch (error) {
+      // ✅ Handle abort gracefully
       if (error.name === 'AbortError') {
         console.log("✅ Generation aborted successfully");
         setErrorMessage("Generation stopped");
         setLoading(false);
-        setIsStreaming(false);
-        isGeneratingRef.current = false;
         abortControllerRef.current = null;
         return;
       }
@@ -381,28 +335,18 @@ export function InputComponent({
         error: error.message,
       });
       setLoading(false);
-      setIsStreaming(false);
-      isGeneratingRef.current = false;
       abortControllerRef.current = null;
     }
   };
 
   return (
-    <>
-      {/* Error Message - Bottom Right */}
+    <div className="input-wrapper mx-2 px-1">
+      {/* Error Message */}
       {errorMessage && (
         <div
           className="alert alert-danger alert-dismissible fade show"
           role="alert"
-          style={{
-            position: 'fixed',
-            bottom: '20px',
-            right: '20px',
-            zIndex: 9999,
-            minWidth: '300px',
-            maxWidth: '400px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-          }}
+          style={{ marginBottom: "10px", marginTop: "10px" }}
         >
           <strong>❌ Error:</strong> {errorMessage}
           <button
@@ -413,22 +357,14 @@ export function InputComponent({
         </div>
       )}
 
-      {/* Cache Notification - Bottom Right */}
+      {/* Cache Notification */}
       {showCacheNotification && cacheInfo && (
         <div
           className={`alert ${
             cacheInfo.fromCache ? "alert-info" : "alert-success"
           } alert-dismissible fade show`}
           role="alert"
-          style={{
-            position: 'fixed',
-            bottom: '20px',
-            right: '20px',
-            zIndex: 9999,
-            minWidth: '300px',
-            maxWidth: '400px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-          }}
+          style={{ marginBottom: "10px", marginTop: "10px" }}
         >
           <strong>
             {cacheInfo.fromCache ? "ℹ️ Cache Hit" : "✅ Success"}:
@@ -446,7 +382,7 @@ export function InputComponent({
       )}
 
       {/* Main Input Area */}
-      <div className="input-container border rounded bg-dark mx-2 px-1">
+      <div className="input-container border rounded bg-dark">
         <textarea
           ref={textareaRef}
           className="form-control border-0 bg-dark text-white"
@@ -522,7 +458,7 @@ export function InputComponent({
           {/* Left Side: Upload Drop-up + Image Previews */}
           <div className="d-flex align-items-center gap-3 flex-wrap">
             {/* Upload Drop-up */}
-            <div className="position-relative" ref={dropdownRef} style={{marginLeft: '8px',}}>
+            <div className="position-relative" ref={dropdownRef}>
               <button
                 type="button"
                 className="btn btn-sm btn-outline-secondary d-flex align-items-center justify-content-center"
@@ -599,11 +535,11 @@ export function InputComponent({
               )}
             </div>
 
-            {/* Image Previews - Separated from +N indicator */}
+            {/* Image Previews */}
             {images.length > 0 && (
               <div className="d-flex align-items-center gap-2 flex-wrap">
                 {images.slice(0, 3).map((img, idx) => (
-                  <div key={idx} className="preview-box position-relative" style={{ width: '38px', height: '38px' }}>
+                  <div key={idx} className="preview-box" style={{ width: '38px', height: '38px' }}>
                     <img
                       src={img.url}
                       alt={`preview-${idx}`}
@@ -630,24 +566,22 @@ export function InputComponent({
                     </button>
                   </div>
                 ))}
-              </div>
-            )}
-            
-            {/* +N More Images Indicator - Separate from flex container */}
-            {images.length > 3 && (
-              <div
-                className="preview-more"
-                title={`${images.length - 3} more image(s)`}
-                style={{
-                  width: '40px',
-                  height: '40px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '0.75rem',
-                }}
-              >
-                +{images.length - 3}
+                {images.length > 3 && (
+                  <div
+                    className="preview-more"
+                    title={`${images.length - 3} more image(s)`}
+                    style={{
+                      width: '38px',
+                      height: '38px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.75rem'
+                    }}
+                  >
+                    +{images.length - 3}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -656,27 +590,20 @@ export function InputComponent({
           <button
             type="button"
             disabled={!loading && !prompt.trim()}
-            className={`btn ${loading ? 'btn-danger' : 'btn-primary'} generate-btn`}
+            className={`btn btn-sm ${loading ? 'btn-danger' : 'btn-primary'} generate-btn`}
             onClick={handleGenerate}
-            style={{ 
-               width: '40px',   
-               height: '40px',  
-               padding: '0px',
-               margin: '8px',
-               marginRight: '10px', 
-               minWidth: '40px',
-          }}
           >
             {loading ? (
               <>
-                <i className="bi bi-stop-circle"></i>
+                <i className="bi bi-stop-circle me-2"></i>
+                Stop
               </>
             ) : (
-              <i className="bi bi-arrow-up"></i>
+              "Generate"
             )}
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }
