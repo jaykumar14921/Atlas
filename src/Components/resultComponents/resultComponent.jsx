@@ -115,7 +115,7 @@ export function CodeEditor() {
       setPreviewCode(code);
       console.log(`✅ Final preview update (streaming ended) - ${code.length} chars`);
     }
-  }, [isStreaming]);
+  }, [isStreaming,code]);
 
   const handleToggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);

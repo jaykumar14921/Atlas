@@ -1,5 +1,4 @@
 import React, { useRef, useState, useEffect } from "react";
-import logo from "../../assets/imgLogo.jpg";
 import { useCacheManager } from "../../utils/useCacheManager";
 import "./inputComponent.css";
 
@@ -126,7 +125,7 @@ export function InputComponent({
     return () => {
       images.forEach((img) => URL.revokeObjectURL(img.url));
     };
-  }, []);
+  }, [images]);
 
   const openZipPicker = () => {
     fileRef.current?.click();
