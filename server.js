@@ -11,7 +11,12 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    "https://atlas-drab-eta.vercel.app",
+    "http://localhost:3000"  // for local dev
+  ]
+}));
 app.use(express.json());
 
 const upload = multer({ storage: multer.memoryStorage() });
