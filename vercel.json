@@ -1,0 +1,16 @@
+{
+  "functions": {
+    "api/generate-stream.js": {
+      "maxDuration": 60
+    },
+    "api/generate-from-project.js": {
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    }
+  ]
+}

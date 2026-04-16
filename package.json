@@ -20,6 +20,7 @@
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
+    "formidable": "^3.5.4",
     "jszip": "^3.10.1",
     "lucide-react": "^0.552.0",
     "monaco-editor": "^0.54.0",
